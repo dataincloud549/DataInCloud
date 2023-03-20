@@ -1,0 +1,54 @@
+import pandas as pd
+p_data= pd.read_csv("s3://data-demo1/input-data/prev_file1.txt")
+c_data=pd.read_csv("s3://data-demo1/input-data/curr_file1.txt")
+
+p_df=pd.DataFrame(p_data,columns=['key','name'])
+c_df=pd.DataFrame(c_data,columns=['key','name'])
+
+def hash_row(row):
+    return hash(tuple(row))
+
+p_df['hash']=p_df.apply(hash_row,axis=1)
+c_df['hash']=c_df.apply(hash_row,axis=1)
+
+print(c_df)
+print("    ")
+print("    ")
+print("    ")
+print(p_df)
+print("    ")
+print("    ")
+p_df=p_df.add_prefix('prev_')
+c_df=c_df.add_prefix('curr_')
+
+df_temp=pd.merge(p_df,c_df,left_on=['prev_key'],right_on=['curr_key'],how='outer')
+
+#print(df_temp)
+
+def cdc_df(df):
+    if pd.isna(df['curr_key']):
+        return 'D'
+    elif pd.isna(df['prev_key']):
+        return 'I'
+    elif df['prev_hash']!= df['curr_hash']:
+        return 'U'
+    else:
+        return 'N'
+
+df_temp['cdc_ind']=df_temp.apply(cdc_df,axis=1)
+print(df_temp)
+print("   ")
+
+
+cur_df=df_temp[['curr_key','curr_name','cdc_ind']][df_temp['cdc_ind'].isin(['I','U'])]
+cur_df=cur_df.rename({'curr_key':'key','curr_name':'name','cdc_ind':'cdc_ind'},axis=1)
+
+prev_df=df_temp[['prev_key','prev_name','cdc_ind']][df_temp['cdc_ind'].isin(['D'])]
+prev_df=prev_df.rename({'prev_key':'key','prev_name':'name','cdc_ind':'cdc_ind'},axis=1)
+print(prev_df)
+print("   ")
+
+output_df=pd.concat([cur_df,prev_df],ignore_index=True)
+print(output_df)
+
+output_df.to_csv("s3://data-demo1/output-data/gluecdcdemo_output",sep=',')
